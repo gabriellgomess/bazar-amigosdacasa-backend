@@ -136,4 +136,54 @@ class AuthController extends Controller
             'message' => 'Você se registrou com sucesso.'
         ], 201);
     }
+
+    public function getUsers()
+    {
+        try {
+            $users = User::select('id', 'nome', 'matricula', 'usuario', 'nivel_acesso', 'criacao')->get();
+            return response()->json([
+                'status' => 'success',
+                'data' => $users,
+                'message' => 'User list retrieved successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'data' => null,
+                'message' => 'Error: ' . $e->getMessage()
+            ], 400);
+        }
+    }
+
+    public function updateUser(Request $request)
+    {
+        $request->validate([
+            'id' => 'required|integer',
+            'nome' => 'required|string|min:3',
+            'nivel_acesso' => 'required|string',
+            'senha' => 'nullable|string',
+        ]);
+
+        try {
+            $user = User::findOrFail($request->id);
+            $user->nome = trim($request->nome);
+            $user->nivel_acesso = trim($request->nivel_acesso);
+            
+            if ($request->filled('senha')) {
+                $user->senha = Hash::make($request->senha);
+            }
+            
+            $user->save();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Usuário atualizado com sucesso'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Erro: ' . $e->getMessage()
+            ], 400);
+        }
+    }
 }

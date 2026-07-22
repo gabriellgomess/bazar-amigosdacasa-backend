@@ -23,6 +23,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user-info', [AuthController::class, 'userInfo']);
     Route::get('/login/user-info.php', [AuthController::class, 'userInfo']);
+    Route::get('/get_users.php', [AuthController::class, 'getUsers']);
+    Route::post('/update_user.php', [AuthController::class, 'updateUser']);
 
     // Vendas
     Route::post('/finaliza_venda.php', [VendaController::class, 'finalizarVenda']);
