@@ -36,10 +36,12 @@ class CompradorController extends Controller
     {
         $request->validate([
             'nome_completo' => 'required|string|min:3',
+            'data_nascimento' => 'required|date|before_or_equal:today',
             'cpf' => 'required|string',
             'telefone' => 'required|string',
             'email' => 'required|email',
             'endereco' => 'nullable|string',
+            'aceite_lgpd' => 'required|accepted',
         ]);
 
         $cpfLimpo = preg_replace('/[^0-9]/', '', $request->cpf);
@@ -63,10 +65,12 @@ class CompradorController extends Controller
 
             $comprador = Comprador::create([
                 'nome_completo' => trim($request->nome_completo),
+                'data_nascimento' => $request->data_nascimento,
                 'cpf' => $cpfLimpo,
                 'telefone' => trim($request->telefone),
                 'email' => trim($request->email),
-                'endereco' => trim($request->endereco),
+                'endereco' => trim((string) $request->endereco),
+                'aceite_lgpd' => true,
                 'cashback_acumulado' => 0.00,
                 'primeira_compra_realizada' => false,
             ]);

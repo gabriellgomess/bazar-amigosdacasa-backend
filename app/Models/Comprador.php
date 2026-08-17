@@ -13,15 +13,19 @@ class Comprador extends Model
 
     protected $fillable = [
         'nome_completo',
+        'data_nascimento',
         'cpf',
         'telefone',
         'email',
         'endereco',
+        'aceite_lgpd',
         'cashback_acumulado',
         'primeira_compra_realizada',
     ];
 
     protected $casts = [
+        'data_nascimento' => 'date',
+        'aceite_lgpd' => 'boolean',
         'primeira_compra_realizada' => 'boolean',
         'cashback_acumulado' => 'decimal:2',
     ];
