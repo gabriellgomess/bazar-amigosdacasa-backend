@@ -44,6 +44,18 @@ class VendaController extends Controller
         // 1. Checagem rápida de idempotência
         $transacaoExistente = Transacao::where('request_id', $requestId)->first();
         if ($transacaoExistente) {
+            // Isso só deveria acontecer em reenvio de uma venda que falhou (mesmo
+            // request_id). Se o payload recebido agora for bem diferente da
+            // transação já salva, provavelmente é uma venda NOVA que está sendo
+            // descartada por engano (request_id reaproveitado no frontend) — loga
+            // pra dar pra investigar/recuperar depois.
+            Log::warning("Venda recebida com request_id já existente (idempotência acionada).", [
+                'request_id' => $requestId,
+                'transacao_existente_id' => $transacaoExistente->id,
+                'payload_recebido' => $request->except(['log_transacao']),
+                'log_transacao_recebido' => $request->log_transacao,
+            ]);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Venda já processada anteriormente.',
