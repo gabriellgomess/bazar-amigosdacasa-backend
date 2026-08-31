@@ -34,14 +34,18 @@ class CompradorController extends Controller
 
     public function registrar(Request $request)
     {
+        // Data de nascimento e aceite da LGPD são obrigatórios no formulário
+        // público (/cadastro-cliente), onde a validação é feita na tela. Aqui
+        // ficam opcionais porque o cadastro rápido do caixa (modal da tela de
+        // Venda) não coleta esses dados.
         $request->validate([
             'nome_completo' => 'required|string|min:3',
-            'data_nascimento' => 'required|date|before_or_equal:today',
+            'data_nascimento' => 'nullable|date|before_or_equal:today',
             'cpf' => 'required|string',
             'telefone' => 'required|string',
             'email' => 'required|email',
             'endereco' => 'nullable|string',
-            'aceite_lgpd' => 'required|accepted',
+            'aceite_lgpd' => 'nullable|boolean',
         ]);
 
         $cpfLimpo = preg_replace('/[^0-9]/', '', $request->cpf);
@@ -70,7 +74,10 @@ class CompradorController extends Controller
                 'telefone' => trim($request->telefone),
                 'email' => trim($request->email),
                 'endereco' => trim((string) $request->endereco),
-                'aceite_lgpd' => true,
+                // Registra o aceite real: só fica true quando o comprador de fato
+                // marcou o consentimento (formulário público). Nunca presumir o
+                // aceite em cadastro feito por terceiros.
+                'aceite_lgpd' => $request->boolean('aceite_lgpd'),
                 'cashback_acumulado' => 0.00,
                 'primeira_compra_realizada' => false,
             ]);

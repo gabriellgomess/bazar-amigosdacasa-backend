@@ -144,6 +144,7 @@ class TransacaoController extends Controller
             $nome = $transacao->nome;
             $valor = floatval($transacao->valor_compra);
             $devolveuLimite = false;
+            $limite = null;
 
             // Exclui a transação
             $transacao->delete();
@@ -168,6 +169,8 @@ class TransacaoController extends Controller
 
             LogAjusteLimite::create([
                 'nome' => $nome,
+                'limite_disponivel' => $devolveuLimite ? (string) $limite->limite_disponivel : '',
+                'limite_total' => $devolveuLimite ? (string) $limite->limite_total : '',
                 'usuario' => $usuario,
                 'acao' => $acao,
                 'data' => now(),
