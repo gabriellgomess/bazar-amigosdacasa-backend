@@ -248,6 +248,9 @@ class VendaController extends Controller
                             'cashback_acumulado_atual' => $comprador->cashback_acumulado,
                             'voucher_valor' => $voucherValorCalculado ?? 0.00,
                             'itens' => $request->log_transacao,
+                            'forma_pagamento' => $formaPagamento,
+                            'quantidade_parcelas' => $request->quantidade_parcelas,
+                            'valor_parcela' => $request->valor_parcela,
                         ];
                     }
                 }

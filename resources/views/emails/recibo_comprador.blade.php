@@ -46,6 +46,18 @@
         <td style="padding:6px 0;"><strong>Valor Líquido Pago:</strong></td>
         <td style="padding:6px 0;font-size:16px;font-weight:bold;color:#0d9488;">R$ {{ number_format($dados['valor_compra'], 2, ',', '.') }}</td>
       </tr>
+      @if(!empty($dados['forma_pagamento']))
+      <tr>
+        <td style="padding:6px 0;"><strong>Forma de Pagamento:</strong></td>
+        <td style="padding:6px 0;">{{ $dados['forma_pagamento'] }}</td>
+      </tr>
+      @endif
+      @if(!empty($dados['quantidade_parcelas']) && $dados['quantidade_parcelas'] > 1)
+      <tr>
+        <td style="padding:6px 0;"><strong>Parcelas:</strong></td>
+        <td style="padding:6px 0;">{{ $dados['quantidade_parcelas'] }}x de R$ {{ number_format($dados['valor_parcela'], 2, ',', '.') }}</td>
+      </tr>
+      @endif
     </table>
 
     <h3 style="margin-top:24px;border-bottom:2px solid #0d9488;padding-bottom:5px;">Seu Extrato de Cashback</h3>
