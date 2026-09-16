@@ -50,13 +50,30 @@ class EstoqueController extends Controller
 
     public function addEstoque(Request $request)
     {
+        // Normaliza valores numéricos (caso venham com vírgula)
+        if ($request->has('valor_sugerido')) {
+            $request->merge([
+                'valor_sugerido' => str_replace(',', '.', (string)$request->valor_sugerido)
+            ]);
+        }
+
+        if ($request->has('valor_desconto') && $request->valor_desconto !== null && $request->valor_desconto !== '') {
+            $request->merge([
+                'valor_desconto' => str_replace(',', '.', (string)$request->valor_desconto)
+            ]);
+        } elseif ($request->has('valor_sugerido') && is_numeric($request->valor_sugerido)) {
+            $request->merge([
+                'valor_desconto' => round((float)$request->valor_sugerido * 0.9, 2)
+            ]);
+        }
+
         $request->validate([
             'codigo' => 'required|string',
             'descricao' => 'required|string',
             'tag' => 'required|string',
             'tipo' => 'required|string',
             'valor_sugerido' => 'required|numeric',
-            'valor_desconto' => 'required|numeric', // Mapeado para desc_func_10 no banco
+            'valor_desconto' => 'nullable|numeric', // Mapeado para desc_func_10 no banco
         ]);
 
         try {
@@ -68,13 +85,18 @@ class EstoqueController extends Controller
                 ], 422);
             }
 
+            $descFunc = $request->valor_desconto;
+            if ($descFunc === null || $descFunc === '') {
+                $descFunc = round((float)$request->valor_sugerido * 0.9, 2);
+            }
+
             Estoque::create([
                 'codigo' => $request->codigo,
                 'descricao' => $request->descricao,
                 'tag' => $request->tag,
                 'tipo' => $request->tipo,
                 'valor_sugerido' => $request->valor_sugerido,
-                'desc_func_10' => $request->valor_desconto,
+                'desc_func_10' => $descFunc,
             ]);
 
             return response()->json([
@@ -92,13 +114,31 @@ class EstoqueController extends Controller
 
     public function editEstoque(Request $request)
     {
+        // Normaliza valores numéricos (caso venham com vírgula)
+        if ($request->has('valor_sugerido')) {
+            $request->merge([
+                'valor_sugerido' => str_replace(',', '.', (string)$request->valor_sugerido)
+            ]);
+        }
+
+        // Se desc_func_10 não foi enviado ou estiver vazio, calcula automaticamente com 10% de desconto
+        if ($request->has('desc_func_10') && $request->desc_func_10 !== null && $request->desc_func_10 !== '') {
+            $request->merge([
+                'desc_func_10' => str_replace(',', '.', (string)$request->desc_func_10)
+            ]);
+        } elseif ($request->has('valor_sugerido') && is_numeric($request->valor_sugerido)) {
+            $request->merge([
+                'desc_func_10' => round((float)$request->valor_sugerido * 0.9, 2)
+            ]);
+        }
+
         $request->validate([
             'codigo' => 'required|string',
             'descricao' => 'required|string',
             'tag' => 'required|string',
             'tipo' => 'required|string',
             'valor_sugerido' => 'required|numeric',
-            'desc_func_10' => 'required|numeric',
+            'desc_func_10' => 'nullable|numeric',
         ]);
 
         try {
@@ -111,12 +151,17 @@ class EstoqueController extends Controller
                 ], 404);
             }
 
+            $descFunc = $request->desc_func_10;
+            if ($descFunc === null || $descFunc === '') {
+                $descFunc = round((float)$request->valor_sugerido * 0.9, 2);
+            }
+
             $peca->update([
                 'descricao' => $request->descricao,
                 'tag' => $request->tag,
                 'tipo' => $request->tipo,
                 'valor_sugerido' => $request->valor_sugerido,
-                'desc_func_10' => $request->desc_func_10,
+                'desc_func_10' => $descFunc,
             ]);
 
             return response()->json([
@@ -127,7 +172,7 @@ class EstoqueController extends Controller
             Log::error("Erro ao editar produto: " . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => 'Erro ao editar produto: ' . $e->getMessage()
             ], 500);
         }
     }

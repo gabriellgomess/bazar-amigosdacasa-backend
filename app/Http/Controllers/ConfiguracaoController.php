@@ -16,12 +16,23 @@ class ConfiguracaoController extends Controller
             $configs['permitir_cartoes_presente'] = '1';
         }
 
+        $todasRotas = ['/venda', '/dashboard', '/backoffice', '/estoque', '/transacoes', '/perfil', '/configuracoes'];
+
         if (!isset($configs['permissoes_menus'])) {
             $configs['permissoes_menus'] = json_encode([
                 'user' => ['/venda', '/transacoes', '/configuracoes'],
                 'gerencia' => ['/venda', '/dashboard', '/backoffice', '/estoque', '/transacoes', '/configuracoes'],
-                'diretoria' => ['/venda', '/dashboard', '/backoffice', '/estoque', '/transacoes', '/perfil', '/configuracoes']
+                'diretoria' => $todasRotas
             ]);
+        } else {
+            try {
+                $decoded = json_decode($configs['permissoes_menus'], true);
+                if (is_array($decoded)) {
+                    $decoded['diretoria'] = $todasRotas;
+                    $configs['permissoes_menus'] = json_encode($decoded);
+                }
+            } catch (\Exception $e) {
+            }
         }
         
         return response()->json($configs);
@@ -43,7 +54,16 @@ class ConfiguracaoController extends Controller
         BazarConfiguracao::setValor('valor_padrao_voucher', $request->valor_padrao_voucher);
         
         if ($request->has('permissoes_menus')) {
-            BazarConfiguracao::setValor('permissoes_menus', $request->permissoes_menus);
+            $permissoesJson = $request->permissoes_menus;
+            try {
+                $decoded = json_decode($permissoesJson, true);
+                if (is_array($decoded)) {
+                    $decoded['diretoria'] = ['/venda', '/dashboard', '/backoffice', '/estoque', '/transacoes', '/perfil', '/configuracoes'];
+                    $permissoesJson = json_encode($decoded);
+                }
+            } catch (\Exception $e) {
+            }
+            BazarConfiguracao::setValor('permissoes_menus', $permissoesJson);
         }
 
         return response()->json(['message' => 'Configurações salvas com sucesso!']);
