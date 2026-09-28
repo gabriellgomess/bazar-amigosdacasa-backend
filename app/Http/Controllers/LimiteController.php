@@ -59,6 +59,12 @@ class LimiteController extends Controller
 
     public function adicionaFuncionario(Request $request)
     {
+        // Compatibilidade: aceita 'user' ou 'usuario'
+        $usuarioIdentificador = $request->input('usuario') ?? $request->input('user') ?? $request->user()?->nome;
+        if ($usuarioIdentificador) {
+            $request->merge(['usuario' => $usuarioIdentificador]);
+        }
+
         $request->validate([
             'nome' => 'required|string',
             'email' => 'nullable|email',
@@ -140,6 +146,11 @@ class LimiteController extends Controller
 
     public function ajusteLimites(Request $request)
     {
+        $usuarioIdentificador = $request->input('user') ?? $request->input('usuario') ?? $request->user()?->nome;
+        if ($usuarioIdentificador) {
+            $request->merge(['user' => $usuarioIdentificador]);
+        }
+
         $request->validate([
             'nome' => 'required|string',
             'user' => 'required|string',
@@ -222,6 +233,11 @@ class LimiteController extends Controller
 
     public function deletarFuncionario(Request $request)
     {
+        $usuarioIdentificador = $request->input('user') ?? $request->input('usuario') ?? $request->user()?->nome;
+        if ($usuarioIdentificador) {
+            $request->merge(['user' => $usuarioIdentificador]);
+        }
+
         $request->validate([
             'id' => 'required|integer',
             'nome' => 'required|string',
