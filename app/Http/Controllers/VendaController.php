@@ -75,7 +75,8 @@ class VendaController extends Controller
             $tipo = "funcionario";
         } elseif ($formaPagamento === "Acolhido") {
             $tipo = "acolhido";
-            $nomeFuncionario = "Nome do acolhido";
+            $descricaoAcolhido = trim($request->descricao_acolhido ?? $request->nome_funcionario ?? '');
+            $nomeFuncionario = !empty($descricaoAcolhido) ? $descricaoAcolhido : "Acolhido";
         } else {
             $tipo = "externo";
             $nomeFuncionario = "Venda externa";
@@ -256,20 +257,32 @@ class VendaController extends Controller
                 }
             }
 
+            // Se for acolhido, garantir que a compra seja 0.00, 1 parcela, e itens com valor_pago = 0.00
+            $isAcolhido = ($formaPagamento === "Acolhido" || $tipo === "acolhido");
+            $valorCompraFinal = $isAcolhido ? "0.00" : (string) $request->valor_compra;
+            $parcelasFinal = $isAcolhido ? 1 : ($request->quantidade_parcelas ?? 1);
+
+            $logTransacaoFinal = $request->log_transacao;
+            if ($isAcolhido && is_array($logTransacaoFinal)) {
+                foreach ($logTransacaoFinal as &$it) {
+                    $it['valor_pago'] = 0.00;
+                }
+            }
+
             // 5. Criar Transação
             $transacao = Transacao::create([
                 'request_id' => $requestId,
                 'nome' => $nomeFuncionario,
-                'valor_compra' => (string) $request->valor_compra,
+                'valor_compra' => $valorCompraFinal,
                 'total_pecas' => (string) $request->total_pecas,
                 'id_cartao_presente' => $request->id_cartao_presente ?? 0,
                 'id_voucher' => $voucherIdCalculado,
                 'voucher_valor' => $voucherValorCalculado,
-                'parcelas' => $request->quantidade_parcelas,
+                'parcelas' => $parcelasFinal,
                 'forma_pagamento' => $formaPagamento,
                 'usuario' => $request->usuario ?? 'Sistema',
                 'tipo' => $tipo,
-                'log_transacao' => $request->log_transacao,
+                'log_transacao' => $logTransacaoFinal,
                 'data' => $request->data_compra,
                 'comprador_id' => $compradorId,
                 'cashback_usado' => $cashbackUsado,
