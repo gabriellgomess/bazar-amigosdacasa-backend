@@ -3,12 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Models\Comprador;
+use App\Services\TrackmobService;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class CompradorController extends Controller
 {
+    public function __construct(private TrackmobService $trackmob)
+    {
+    }
+
     public function buscarPorCpf(Request $request)
     {
         $request->validate([
@@ -34,10 +39,10 @@ class CompradorController extends Controller
 
     public function registrar(Request $request)
     {
-        // Data de nascimento e aceite da LGPD são obrigatórios no formulário
-        // público (/cadastro-cliente), onde a validação é feita na tela. Aqui
-        // ficam opcionais porque o cadastro rápido do caixa (modal da tela de
-        // Venda) não coleta esses dados.
+        // Data de nascimento e aceite da LGPD são validados na tela, nos dois
+        // formulários (público e caixa). Aqui ficam opcionais de propósito: o
+        // backend e o frontend sobem em deploys separados, e exigir os campos no
+        // servidor antes do build novo estar no ar derrubaria o cadastro.
         $request->validate([
             'nome_completo' => 'required|string|min:3',
             'data_nascimento' => 'nullable|date|before_or_equal:today',
@@ -46,6 +51,8 @@ class CompradorController extends Controller
             'email' => 'required|email',
             'endereco' => 'nullable|string',
             'aceite_lgpd' => 'nullable|boolean',
+            // De onde veio o cadastro, usado como tag do lead na Trackmob.
+            'origem' => 'nullable|string|max:40',
         ]);
 
         $cpfLimpo = preg_replace('/[^0-9]/', '', $request->cpf);
@@ -81,6 +88,11 @@ class CompradorController extends Controller
                 'cashback_acumulado' => 0.00,
                 'primeira_compra_realizada' => false,
             ]);
+
+            // Espelha o cadastro como lead na Trackmob. O serviço engole as
+            // próprias falhas (API fora, credencial errada, CPF já existente lá)
+            // para que nada disso derrube o cadastro no bazar.
+            $this->trackmob->enviarLead($comprador, $request->origem);
 
             return response()->json([
                 'success' => true,

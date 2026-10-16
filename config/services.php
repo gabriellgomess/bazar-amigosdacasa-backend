@@ -35,4 +35,21 @@ return [
         ],
     ],
 
+    /*
+    | Trackmob — espelha como lead cada comprador cadastrado no bazar.
+    | Enquanto TRACKMOB_ENABLED estiver desligado (ou faltar credencial), a
+    | integração fica inerte e o cadastro no bazar segue normalmente.
+    */
+    'trackmob' => [
+        'enabled' => env('TRACKMOB_ENABLED', false),
+        'base_url' => env('TRACKMOB_BASE_URL', 'https://api.trackmob.com.br'),
+        'client_id' => env('TRACKMOB_CLIENT_ID'),
+        'client_secret' => env('TRACKMOB_CLIENT_SECRET'),
+        // Campanha "Bazar Cashback".
+        'campaign_id' => env('TRACKMOB_CAMPAIGN_ID', '2a05d85b-4f49-46b9-ad83-9ecb7a86b66d'),
+        // Timeout curto de propósito: o cadastro não pode ficar pendurado
+        // esperando a Trackmob responder.
+        'timeout' => env('TRACKMOB_TIMEOUT', 6),
+    ],
+
 ];
