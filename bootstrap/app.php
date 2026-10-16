@@ -12,6 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    // Registra os comandos de app/Console/Commands. O `commands:` do withRouting
+    // acima só aponta o routes/console.php, então sem esta linha os comandos em
+    // classe (ex: trackmob:sincronizar-leads) não aparecem no artisan.
+    ->withCommands()
     ->withMiddleware(function (Middleware $middleware): void {
         //
     })

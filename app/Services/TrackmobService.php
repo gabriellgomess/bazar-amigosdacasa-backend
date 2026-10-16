@@ -9,64 +9,147 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Envia para a Trackmob, como lead, o comprador que acabou de se cadastrar no
- * bazar — tanto pelo QR Code (formulário público) quanto pelo caixa.
+ * Envia para a Trackmob, como lead, o comprador cadastrado no bazar — tanto
+ * pelo QR Code (formulário público) quanto pelo caixa.
  *
- * Regra de ouro desta classe: NADA aqui pode derrubar o cadastro no bazar.
- * Toda falha (credencial errada, API fora do ar, CPF já existente lá) vira log
- * e o fluxo segue. Por isso os métodos públicos não lançam exceção.
+ * Dois pontos de entrada:
+ *  - enviarLead():  usado pelo cadastro. NUNCA lança exceção; toda falha vira
+ *                   log e o cadastro no bazar segue normalmente.
+ *  - sincronizar(): usado pelo comando de carga retroativa. Devolve o resultado
+ *                   de cada registro para o comando poder contabilizar.
  */
 class TrackmobService
 {
     private const CACHE_KEY_TOKEN = 'trackmob_access_token';
 
     /**
-     * Cria o lead na Trackmob e, se houver origem, aplica a tag correspondente.
-     * O $origem é o texto que vai virar tag lá ("QR Code" ou "Caixa").
+     * Dispara e esquece: chamado logo após o cadastro do comprador.
      */
     public function enviarLead(Comprador $comprador, ?string $origem = null): void
     {
-        if (!$this->habilitado()) {
-            return;
-        }
-
         try {
-            $token = $this->accessToken();
+            $resultado = $this->sincronizar($comprador, $origem);
 
-            if (!$token) {
-                return;
-            }
-
-            $resposta = $this->request($token)
-                ->post($this->url('/v1/donors'), $this->montarPayload($comprador));
-
-            if ($resposta->failed()) {
-                // CPF já cadastrado na Trackmob cai aqui (decidido: só registrar
-                // e seguir, sem sobrescrever o cadastro que já existe lá).
+            if ($resultado['status'] === 'criado') {
+                Log::info('Trackmob: lead criado.', [
+                    'comprador_id' => $comprador->id,
+                    'donor_id' => $resultado['donorId'],
+                    'origem' => $origem,
+                ]);
+            } elseif ($resultado['status'] === 'erro') {
                 Log::warning('Trackmob: lead nao criado.', [
                     'comprador_id' => $comprador->id,
-                    'status' => $resposta->status(),
-                    'resposta' => $resposta->body(),
+                    'mensagem' => $resultado['mensagem'],
                 ]);
-
-                return;
-            }
-
-            $donorId = $resposta->json('donorId') ?? $resposta->json('id');
-
-            Log::info('Trackmob: lead criado.', [
-                'comprador_id' => $comprador->id,
-                'donor_id' => $donorId,
-                'origem' => $origem,
-            ]);
-
-            if ($donorId && $origem) {
-                $this->adicionarTag((string) $donorId, $origem, $token);
             }
         } catch (Exception $e) {
             Log::error('Trackmob: falha ao enviar lead: ' . $e->getMessage(), [
                 'comprador_id' => $comprador->id,
             ]);
+        }
+    }
+
+    /**
+     * Cria o lead e aplica a tag de origem.
+     *
+     * @param bool $verificarExistente quando true, consulta o CPF na Trackmob
+     *        antes de criar. É o que torna a carga retroativa repetível sem
+     *        gerar duplicata.
+     *
+     * @return array{status:string,donorId:?string,mensagem:?string}
+     *         status: criado | existente | desabilitado | erro
+     */
+    public function sincronizar(
+        Comprador $comprador,
+        ?string $origem = null,
+        bool $verificarExistente = false
+    ): array {
+        if (!$this->habilitado()) {
+            return $this->resultado('desabilitado', null, 'Integração desligada ou sem credenciais.');
+        }
+
+        $token = $this->accessToken();
+
+        if (!$token) {
+            return $this->resultado('erro', null, 'Não foi possível gerar o access token.');
+        }
+
+        if ($verificarExistente) {
+            $existente = $this->buscarDonorIdPorDocumento($comprador->cpf, $token);
+
+            if ($existente['status'] === 'erro') {
+                return $this->resultado('erro', null, $existente['mensagem']);
+            }
+
+            if ($existente['status'] === 'encontrado') {
+                return $this->resultado('existente', $existente['donorId'], 'CPF já cadastrado na Trackmob.');
+            }
+        }
+
+        $resposta = $this->request($token)
+            ->post($this->url('/v1/donors'), $this->montarPayload($comprador));
+
+        if ($resposta->failed()) {
+            return $this->resultado(
+                'erro',
+                null,
+                'HTTP ' . $resposta->status() . ' — ' . $this->trecho($resposta->body())
+            );
+        }
+
+        $donorId = $resposta->json('donorId') ?? $resposta->json('id');
+
+        if ($donorId && $origem) {
+            $this->adicionarTag((string) $donorId, $origem, $token);
+        }
+
+        return $this->resultado('criado', $donorId ? (string) $donorId : null);
+    }
+
+    /**
+     * Consulta o doador pelo CPF.
+     *
+     * Distinção importante: "não encontrado" libera a criação, mas um erro de
+     * verdade (401, 500, rede) NÃO pode ser tratado como ausência — isso geraria
+     * duplicata. Nesse caso devolve 'erro' e o chamador pula o registro.
+     *
+     * @return array{status:string,donorId:?string,mensagem:?string}
+     *         status: encontrado | nao_encontrado | erro
+     */
+    public function buscarDonorIdPorDocumento(?string $cpf, string $token): array
+    {
+        $documento = preg_replace('/\D/', '', (string) $cpf);
+
+        if ($documento === '') {
+            return $this->resultado('nao_encontrado');
+        }
+
+        try {
+            $resposta = $this->request($token)
+                ->get($this->url("/v1/donors/id/{$documento}"));
+
+            if ($resposta->successful()) {
+                $donorId = $resposta->json('donorId') ?? $resposta->json('id');
+
+                // 200 sem id no corpo: trata como ausência, para não travar a carga.
+                return $donorId
+                    ? $this->resultado('encontrado', (string) $donorId)
+                    : $this->resultado('nao_encontrado');
+            }
+
+            // A spec não declara 404 nesta rota; 400/404/422 são as respostas
+            // esperadas para documento inexistente.
+            if (in_array($resposta->status(), [400, 404, 422], true)) {
+                return $this->resultado('nao_encontrado');
+            }
+
+            return $this->resultado(
+                'erro',
+                null,
+                'Consulta por CPF falhou: HTTP ' . $resposta->status() . ' — ' . $this->trecho($resposta->body())
+            );
+        } catch (Exception $e) {
+            return $this->resultado('erro', null, 'Consulta por CPF falhou: ' . $e->getMessage());
         }
     }
 
@@ -86,7 +169,7 @@ class TrackmobService
      * O token vale 6000s. Guarda em cache com folga para não pedir um novo a
      * cada cadastro.
      */
-    private function accessToken(): ?string
+    public function accessToken(): ?string
     {
         $token = Cache::get(self::CACHE_KEY_TOKEN);
 
@@ -94,14 +177,20 @@ class TrackmobService
             return $token;
         }
 
-        $resposta = Http::asMultipart()
-            ->timeout($this->timeout())
-            ->connectTimeout(3)
-            ->acceptJson()
-            ->post($this->url('/v1/authentication/token'), [
-                'clientId' => config('services.trackmob.client_id'),
-                'clientSecret' => config('services.trackmob.client_secret'),
-            ]);
+        try {
+            $resposta = Http::asMultipart()
+                ->timeout($this->timeout())
+                ->connectTimeout(3)
+                ->acceptJson()
+                ->post($this->url('/v1/authentication/token'), [
+                    'clientId' => config('services.trackmob.client_id'),
+                    'clientSecret' => config('services.trackmob.client_secret'),
+                ]);
+        } catch (Exception $e) {
+            Log::error('Trackmob: falha ao gerar access token: ' . $e->getMessage());
+
+            return null;
+        }
 
         if ($resposta->failed()) {
             Log::error('Trackmob: falha ao gerar access token.', [
@@ -125,7 +214,7 @@ class TrackmobService
         return $token;
     }
 
-    private function montarPayload(Comprador $comprador): array
+    public function montarPayload(Comprador $comprador): array
     {
         $telefone = self::separarTelefone($comprador->telefone);
         $endereco = trim((string) $comprador->endereco);
@@ -167,7 +256,8 @@ class TrackmobService
     /**
      * Permissão de contato só vai como true quando o consentimento LGPD foi de
      * fato registrado no cadastro. Sem aceite, o lead entra sem permissão
-     * nenhuma — não se presume consentimento.
+     * nenhuma — não se presume consentimento. Isso vale especialmente para a
+     * carga retroativa, feita antes de o checkbox existir.
      *
      * Cartas e mala direta ficam false porque o bazar não coleta endereço
      * estruturado.
@@ -253,6 +343,16 @@ class TrackmobService
             'description' => null,
             'type' => 'Mobile',
         ];
+    }
+
+    private function resultado(string $status, ?string $donorId = null, ?string $mensagem = null): array
+    {
+        return ['status' => $status, 'donorId' => $donorId, 'mensagem' => $mensagem];
+    }
+
+    private function trecho(?string $corpo): string
+    {
+        return mb_substr(trim((string) $corpo), 0, 300);
     }
 
     private function request(string $token)
